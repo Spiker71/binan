@@ -25,7 +25,7 @@ client = Client(api_key, api_secret)
 
 def get_historical_klines(symbol, interval, start_str):
     """Получение исторических данных"""
-    klines = client.get_historical_klines(symbol, interval, start_str)
+    klines = client.futures_klines(symbol=symbol, interval=interval, startTime=start_str)
     return klines
 
 def calculate_fibonacci_levels(data):
@@ -55,12 +55,14 @@ def find_trade_signals(data, levels):
 
 def analyze_market():
     """Основная функция для анализа рынка"""
-    symbols = [symbol['symbol'] for symbol in client.get_all_tickers()]  # Получение всех символов с Binance
+    # Получение всех фьючерсных символов
+    futures_info = client.futures_exchange_info()
+    symbols = [s['symbol'] for s in futures_info['symbols'] if s['quoteAsset'] == 'USDT']
     intervals = [Client.KLINE_INTERVAL_15MINUTE, Client.KLINE_INTERVAL_1HOUR]
 
     for symbol in symbols:
         for interval in intervals:
-            start_str = '1 month ago UTC'
+            start_str = int((datetime.datetime.now() - datetime.timedelta(days=30)).timestamp() * 1000)
 
             # Получение исторических данных
             klines = get_historical_klines(symbol, interval, start_str)
@@ -90,7 +92,7 @@ def capture_chart_screenshot(symbol, interval, signals, levels):
     driver.set_window_size(1920, 1080)
     
     # Открытие TradingView с графиком
-    url = f'https://www.tradingview.com/chart/?symbol=BINANCE%3A{symbol.replace("/", "")}'
+    url = f'https://www.tradingview.com/chart/?symbol=BINANCE%3A{symbol.replace("USDT", "USDTPERP")}'
     driver.get(url)
     
     try:
