@@ -3,8 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from binance.client import Client
 from binance.enums import *
-from PIL import ImageGrab
-import datetime
+from PIL import Image, ImageDraw, ImageFont
 import time
 import subprocess
 import sys
@@ -95,40 +94,21 @@ def analyze_market():
             for signal in signals:
                 logging.info(f"Signal: {signal[0]} at index {signal[1]} (price: {close_prices[signal[1]]}) for {symbol} on {interval}")
             
-            # Сохранение графиков с уровнями Фибоначчи и сигналами
-            save_chart(symbol, interval, close_prices, fibonacci_levels, signals)
+            # Захват скриншота графика с Binance и наложение анализа
+            capture_and_annotate_chart(symbol, interval, close_prices, fibonacci_levels, signals)
 
-            # Захват скриншота графика с Binance
-            capture_chart(symbol, interval)
+def capture_and_annotate_chart(symbol, interval, close_prices, levels, signals):
+    """Снимок экрана графика с Binance и наложение уровней Фибоначчи и сигналов"""
+    # Настройки для Selenium
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")  # Запуск в фоновом режиме
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920x1080")
 
-def save_chart(symbol, interval, close_prices, levels, signals):
-    """Сохранение графиков с уровнями Фибоначчи и сигналами"""
-    plt.figure(figsize=(10, 5))
-    plt.plot(close_prices, label='Close Prices')
-    for level in levels:
-        plt.axhline(y=levels[level], linestyle='--', label=f'Fibonacci {level}')
-    for signal in signals:
-        if signal[0] == 'Buy':
-            plt.plot(signal[1], close_prices[signal[1]], 'go', label='Buy Signal')
-        elif signal[0] == 'Sell':
-            plt.plot(signal[1], close_prices[signal[1]], 'ro', label='Sell Signal')
-    plt.title(f'{symbol} - {interval}')
-    plt.legend()
-    plt.savefig(f'{symbol}_{interval}.png')
-    plt.close()
+    # Инициализация драйвера Chrome
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=chrome_options)
 
-# Настройки для Selenium
-chrome_options = Options()
-chrome_options.add_argument("--headless")  # Запуск в фоновом режиме
-chrome_options.add_argument("--disable-gpu")
-chrome_options.add_argument("--window-size=1920x1080")
-
-# Инициализация драйвера Chrome
-service = Service(ChromeDriverManager().install())
-driver = webdriver.Chrome(service=service, options=chrome_options)
-
-def capture_chart(symbol, interval):
-    """Снимок экрана графика с Binance"""
     url = f"https://www.binance.com/en/trade/{symbol}?theme=dark&type=spot"
     driver.get(url)
     time.sleep(5)  # Даем время странице загрузиться
@@ -141,7 +121,39 @@ def capture_chart(symbol, interval):
     filename = f"{symbol}_{interval}.png"
     with open(filename, "wb") as f:
         f.write(screenshot)
-    logging.info(f"Скриншот сохранен: {filename}")
+    driver.quit()
+
+    # Открытие скриншота для редактирования
+    image = Image.open(filename)
+    draw = ImageDraw.Draw(image)
+
+    # Наложение уровней Фибоначчи и сигналов
+    font = ImageFont.load_default()
+
+    for level in levels:
+        y = int(image.height * (1 - (levels[level] - min(close_prices)) / (max(close_prices) - min(close_prices))))
+        draw.line((0, y, image.width, y), fill="yellow", width=2)
+        draw.text((10, y), level, fill="yellow", font=font)
+
+    for signal in signals:
+        x = int(image.width * signal[1] / len(close_prices))
+        y = int(image.height * (1 - (close_prices[signal[1]] - min(close_prices)) / (max(close_prices) - min(close_prices))))
+        color = "green" if signal[0] == "Buy" else "red"
+        draw.ellipse((x-5, y-5, x+5, y+5), fill=color)
+        draw.text((x+10, y), signal[0], fill=color, font=font)
+
+    # Сохранение скриншота с аннотациями
+    annotated_filename = f"{symbol}_{interval}_annotated.png"
+    image.save(annotated_filename)
+    logging.info(f"Скриншот с аннотациями сохранен: {annotated_filename}")
 
 def main():
-    logging.basicConfig(filename
+    logging.basicConfig(filename='trading_screenshots.log', level=logging.INFO,
+                        format='%(asctime)s [%(levelname)s] %(message)s')
+
+    while True:
+        analyze_market()
+        time.sleep(60 * 15)  # Анализировать каждые 15 минут
+
+if __name__ == '__main__':
+    main()
