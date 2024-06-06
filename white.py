@@ -1,11 +1,10 @@
 import logging
 import numpy as np
+from binance.client import Client
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 import time
@@ -14,38 +13,29 @@ import datetime
 # Установка параметров логирования
 logging.basicConfig(filename='trading_signals.log', level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
-def calculate_fibonacci_levels(data):
-    logging.info("Calculating Fibonacci levels")
-    max_price = max(data)
-    min_price = min(data)
-    diff = max_price - min_price
-    levels = {
-        '0.0%': max_price,
-        '23.6%': max_price - 0.236 * diff,
-        '38.2%': max_price - 0.382 * diff,
-        '50.0%': max_price - 0.5 * diff,
-        '61.8%': max_price - 0.618 * diff,
-        '100.0%': min_price
-    }
-    logging.info(f"Fibonacci levels: {levels}")
-    return levels
+# Создание клиента Binance
+client = Client()
 
-def find_trade_signals(data, levels):
-    logging.info("Finding trade signals")
-    signals = []
-    for i in range(1, len(data)):
-        if data[i-1] > levels['38.2%'] and data[i] <= levels['38.2%']:
-            signals.append(('Buy', i, levels['38.2%']))
-        elif data[i-1] < levels['61.8%'] and data[i] >= levels['61.8%']:
-            signals.append(('Sell', i, levels['61.8%']))
-    logging.info(f"Signals found: {signals}")
-    return signals
+def get_historical_klines(symbol, interval, start_str):
+    """Получение исторических данных"""
+    klines = client.futures_klines(symbol=symbol, interval=interval, startTime=start_str)
+    return klines
 
-def analyze_market():
-    logging.info("Starting market analysis")
-    symbols = ['BTCUSDT', 'ETHUSDT']  # Добавьте сюда нужные символы
-    intervals = ['15', '60', '240', 'D']  # 15 мин, 1 час, 4 часа, 1 день
+# Остальные функции (calculate_fibonacci_levels, find_trade_signals, analyze_market) остаются без изменений
 
+# Функция для ожидания видимости элемента на странице
+def wait_for_element(driver, by, selector, timeout=10):
+    try:
+        element = WebDriverWait(driver, timeout).until(
+            EC.visibility_of_element_located((by, selector))
+        )
+        return element
+    except Exception as e:
+        print(f"Ошибка при ожидании элемента: {e}")
+        return None
+
+# Функция для создания скриншота с улучшениями
+def capture_chart_screenshot(symbol, interval, signals, levels, prices):
     options = Options()
     options.add_argument('--headless')
     options.add_argument('--disable-gpu')
@@ -53,105 +43,53 @@ def analyze_market():
     options.add_argument('--disable-dev-shm-usage')
     driver = webdriver.Chrome(service=ChromeService(), options=options)
     driver.set_window_size(1920, 1080)
-
-    for symbol in symbols:
-        for interval in intervals:
-            url = f'https://www.tradingview.com/chart/?symbol=BINANCE%3A{symbol.replace("USDT", "USDTPERP")}'
-            logging.info(f"Opening URL: {url}")
-            driver.get(url)
-            time.sleep(10)  # Задержка для полной загрузки графика
-
-            try:
-                # Извлечение данных о ценах с графика
-                logging.info(f"Extracting prices for {symbol} on {interval} interval")
-                close_prices = extract_prices_from_chart(driver)
-                if not close_prices:
-                    logging.warning(f"No prices extracted for {symbol} on {interval} interval")
-                    continue
-
-                # Рассчет уровней Фибоначчи
-                logging.info(f"Calculating Fibonacci levels for {symbol} on {interval} interval")
-                fibonacci_levels = calculate_fibonacci_levels(close_prices)
-
-                # Поиск точек входа
-                logging.info(f"Finding trade signals for {symbol} on {interval} interval")
-                signals = find_trade_signals(close_prices, fibonacci_levels)
-
-                # Логирование сигналов
-                for signal in signals:
-                    if interval == '15':
-                        logging.info(f"Signal: {signal[0]} at index {signal[1]} (price: {close_prices[signal[1]]}) for {symbol} on {interval}")
-                        capture_chart_screenshot(driver, symbol, interval, signal, fibonacci_levels, close_prices)
-            except Exception as e:
-                logging.error(f"Error analyzing {symbol} on {interval}: {e}")
-
-    driver.quit()
-
-def extract_prices_from_chart(driver):
-    logging.info("Extracting prices from chart")
+    
+    # Открываем TradingView с нужным символом
+    url = f'https://www.tradingview.com/chart/?symbol=BINANCE%3A{symbol.replace("USDT", "USDTPERP")}'
+    driver.get(url)
+    
     try:
-        # Пример CSS селектора, замените его на актуальный для вашей страницы
-        price_elements = driver.find_elements(By.CSS_SELECTOR, '.chart-container .price')
-        logging.info(f"Price elements found: {len(price_elements)}")
-        if not price_elements:
-            logging.warning("No price elements found")
-            return []
+        # Ждем, пока график станет видимым
+        chart_element = wait_for_element(driver, By.CSS_SELECTOR, 'canvas')
+        if chart_element is None:
+            return
+        
+        # Дожидаемся полной загрузки графика
+        time.sleep(5)
 
-        prices = [float(element.text.replace(',', '')) for element in price_elements]
-        logging.info(f"Extracted {len(prices)} prices")
-        return prices
-    except Exception as e:
-        logging.error(f"Error extracting prices from chart: {e}")
-        return []
-
-def capture_chart_screenshot(driver, symbol, interval, signal, levels, prices):
-    logging.info(f"Capturing chart screenshot for {symbol} on {interval}...")
-    try:
-        chart_element = WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, 'canvas'))
-        )
-        time.sleep(5)  # Задержка для полной загрузки графика
+        # Создаем скриншот
         screenshot = chart_element.screenshot_as_png
         image = Image.open(BytesIO(screenshot))
 
-        # Рисование сигналов на скриншоте
+        # Добавляем уровни Фибоначчи на скриншот
         draw = ImageDraw.Draw(image)
         font = ImageFont.load_default()
-
-        # Определение размеров изображения
-        width, height = image.size
-
-        # Рисование уровней Фибоначчи
+        
+        # Рисуем уровни Фибоначчи
         for level, price in levels.items():
             y = height - int((price - min(prices)) / (max(prices) - min(prices)) * height)
             draw.line([(0, y), (width, y)], fill='blue', width=2)
             draw.text((0, y), f'{level} ({price:.2f})', fill='blue', font=font)
-
-        # Рисование сигналов Buy/Sell
-        x = signal[1] * (width / len(prices))
-        y = height - int((signal[2] - min(prices)) / (max(prices) - min(prices)) * height)
-        color = 'green' if signal[0] == 'Buy' else 'red'
-        draw.text((x, y), signal[0], fill=color, font=font)
-        draw.rectangle([x-5, y-5, x+5, y+5], outline=color)
-
-        # Определение ближайших уровней тейк-профита
-        take_profit_1 = signal[2] + (levels['38.2%'] - levels['61.8%']) if signal[0] == 'Buy' else signal[2] - (levels['38.2%'] - levels['61.8%'])
-        take_profit_2 = signal[2] + 2 * (levels['38.2%'] - levels['61.8%']) if signal[0] == 'Buy' else signal[2] - 2 * (levels['38.2%'] - levels['61.8%'])
-
-        y_tp1 = height - int((take_profit_1 - min(prices)) / (max(prices) - min(prices)) * height)
-        y_tp2 = height - int((take_profit_2 - min(prices)) / (max(prices) - min(prices)) * height)
-
-        draw.line([(0, y_tp1), (width, y_tp1)], fill='green', width=1)
-        draw.text((0, y_tp1), f'Take Profit 1 ({take_profit_1:.2f})', fill='green', font=font)
-
-        draw.line([(0, y_tp2), (width, y_tp2)], fill='green', width=1)
-        draw.text((0, y_tp2), f'Take Profit 2 ({take_profit_2:.2f})', fill='green', font=font)
-
-        # Сохранение изображения
-        image.save(f'screenshot_{symbol}_{interval}.png')
-        logging.info(f"Screenshot saved: screenshot_{symbol}_{interval}.png")
+        
+        # Рисуем сигналы Buy/Sell
+        for signal in signals:
+            x = signal[1] * (width / len(prices))
+            y = height - int((signal[2] - min(prices)) / (max(prices) - min(prices)) * height)
+            color = 'green' if signal[0] == 'Buy' else 'red'
+            draw.text((x, y), signal[0], fill=color, font=font)
+            draw.rectangle([x-5, y-5, x+5, y+5], outline=color)
+        
+        # Сохраняем скриншот
+        image.save(f'{symbol}_{interval}_screenshot.png')
     except Exception as e:
-        logging.error(f"Error capturing screenshot for {symbol} on {interval}: {e}")
+        print(f"Ошибка при создании скриншота: {e}")
+    finally:
+        driver.quit()
+
+def main():
+    while True:
+        analyze_market()
+        time.sleep(60 * 15)  # анализировать каждые 15 минут
 
 if __name__ == '__main__':
-    analyze_market()
+    main()
