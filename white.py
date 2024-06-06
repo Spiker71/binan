@@ -1,6 +1,5 @@
 import logging
 import numpy as np
-from binance.client import Client
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
@@ -15,34 +14,8 @@ import datetime
 # Установка параметров логирования
 logging.basicConfig(filename='trading_signals.log', level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
-# Вставьте ваш API ключ и секрет сюда
-api_key = 'czs8NPf9uo1va2Sg4HB5NCWFO7XGNtP8RPHWLWU8eWqNw0XhqjCsPhJreJfaEMhv'
-api_secret = 'v0Onk3jFT4G5Q4vufMt3eDqT2r2cKKW4NoOQC53uLNSfjRcBHfqdmYBrHaFa3Udx'
-
-# Создание клиента Binance
-client = Client(api_key, api_secret)
-
-def check_connection():
-    logging.info("Checking connection to Binance API...")
-    try:
-        client.ping()
-        logging.info("Connection to Binance API successful.")
-    except Exception as e:
-        logging.error(f"Error connecting to Binance API: {e}")
-        exit(1)
-
-def get_historical_klines(symbol, interval, start_str):
-    logging.info(f"Fetching historical klines for {symbol} on {interval}...")
-    try:
-        klines = client.futures_klines(symbol=symbol, interval=interval, startTime=start_str)
-        logging.info(f"Received {len(klines)} klines for {symbol} on {interval}")
-        return klines
-    except Exception as e:
-        logging.error(f"Error fetching historical data for {symbol} on {interval}: {e}")
-        return []
-
 def calculate_fibonacci_levels(data):
-    logging.info("Calculating Fibonacci levels...")
+    """Расчет уровней Фибоначчи"""
     max_price = max(data)
     min_price = min(data)
     diff = max_price - min_price
@@ -54,40 +27,42 @@ def calculate_fibonacci_levels(data):
         '61.8%': max_price - 0.618 * diff,
         '100.0%': min_price
     }
-    logging.info(f"Fibonacci levels calculated: {levels}")
     return levels
 
 def find_trade_signals(data, levels):
-    logging.info("Finding trade signals...")
+    """Поиск точек входа на основе уровней Фибоначчи"""
     signals = []
     for i in range(1, len(data)):
         if data[i-1] > levels['38.2%'] and data[i] <= levels['38.2%']:
             signals.append(('Buy', i, levels['38.2%']))
         elif data[i-1] < levels['61.8%'] and data[i] >= levels['61.8%']:
             signals.append(('Sell', i, levels['61.8%']))
-    logging.info(f"Signals found: {signals}")
     return signals
 
 def analyze_market():
-    logging.info("Starting market analysis...")
-    try:
-        # Получение всех фьючерсных символов
-        futures_info = client.futures_exchange_info()
-        symbols = [s['symbol'] for s in futures_info['symbols'] if s['quoteAsset'] == 'USDT']
-        intervals = [Client.KLINE_INTERVAL_15MINUTE, Client.KLINE_INTERVAL_1HOUR, Client.KLINE_INTERVAL_4HOUR, Client.KLINE_INTERVAL_1DAY]
+    """Основная функция для анализа рынка"""
+    symbols = ['BTCUSDT', 'ETHUSDT']  # Добавьте сюда нужные символы
+    intervals = ['15', '60', '240', 'D']  # 15 мин, 1 час, 4 часа, 1 день
 
-        potential_trades = []
+    options = Options()
+    options.add_argument('--headless')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    driver = webdriver.Chrome(service=ChromeService(), options=options)
+    driver.set_window_size(1920, 1080)
 
-        for symbol in symbols:
-            for interval in intervals:
-                start_str = int((datetime.datetime.now() - datetime.timedelta(days=30)).timestamp() * 1000)
+    for symbol in symbols:
+        for interval in intervals:
+            url = f'https://www.tradingview.com/chart/?symbol=BINANCE%3A{symbol.replace("USDT", "USDTPERP")}'
+            driver.get(url)
+            time.sleep(10)  # Задержка для полной загрузки графика
 
-                # Получение исторических данных
-                klines = get_historical_klines(symbol, interval, start_str)
-                if not klines:
+            try:
+                # Извлечение данных о ценах с графика
+                close_prices = extract_prices_from_chart(driver)
+                if not close_prices:
                     continue
-
-                close_prices = np.array([float(kline[4]) for kline in klines])
 
                 # Рассчет уровней Фибоначчи
                 fibonacci_levels = calculate_fibonacci_levels(close_prices)
@@ -97,32 +72,29 @@ def analyze_market():
 
                 # Логирование сигналов
                 for signal in signals:
-                    if interval == Client.KLINE_INTERVAL_15MINUTE:
-                        potential_trades.append((symbol, interval, signal, fibonacci_levels, close_prices))
+                    if interval == '15':
                         logging.info(f"Signal: {signal[0]} at index {signal[1]} (price: {close_prices[signal[1]]}) for {symbol} on {interval}")
+                        capture_chart_screenshot(driver, symbol, interval, signal, fibonacci_levels, close_prices)
+            except Exception as e:
+                logging.error(f"Error analyzing {symbol} on {interval}: {e}")
 
-        for trade in potential_trades:
-            symbol, interval, signal, levels, prices = trade
-            capture_chart_screenshot(symbol, interval, signal, levels, prices)
-    except Exception as e:
-        logging.error(f"Error in analyze_market: {e}")
+    driver.quit()
 
-def capture_chart_screenshot(symbol, interval, signal, levels, prices):
-    logging.info(f"Capturing chart screenshot for {symbol} on {interval}...")
-    options = Options()
-    options.add_argument('--headless')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    driver = webdriver.Chrome(service=ChromeService(), options=options)
-    driver.set_window_size(1920, 1080)
-    
-    # Открытие TradingView с графиком
-    url = f'https://www.tradingview.com/chart/?symbol=BINANCE%3A{symbol.replace("USDT", "USDTPERP")}'
-    driver.get(url)
-    
+def extract_prices_from_chart(driver):
+    """Извлечение цен закрытия с графика TradingView"""
     try:
-        # Ждем, пока элемент станет видимым
+        # Предположим, что элемент, содержащий данные о ценах, имеет определенный CSS-селектор
+        price_elements = driver.find_elements(By.CSS_SELECTOR, '.some-css-selector-for-prices')
+        prices = [float(element.text.replace(',', '')) for element in price_elements]
+        return prices
+    except Exception as e:
+        logging.error(f"Error extracting prices from chart: {e}")
+        return []
+
+def capture_chart_screenshot(driver, symbol, interval, signal, levels, prices):
+    """Сделать скриншот графика с TradingView"""
+    logging.info(f"Capturing chart screenshot for {symbol} on {interval}...")
+    try:
         chart_element = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, 'canvas'))
         )
@@ -168,9 +140,6 @@ def capture_chart_screenshot(symbol, interval, signal, levels, prices):
         logging.info(f"Screenshot saved: screenshot_{symbol}_{interval}.png")
     except Exception as e:
         logging.error(f"Error capturing screenshot for {symbol} on {interval}: {e}")
-    finally:
-        driver.quit()
 
 if __name__ == '__main__':
-    check_connection()
     analyze_market()
