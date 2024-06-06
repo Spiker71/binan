@@ -23,6 +23,7 @@ api_secret = 'v0Onk3jFT4G5Q4vufMt3eDqT2r2cKKW4NoOQC53uLNSfjRcBHfqdmYBrHaFa3Udx'
 client = Client(api_key, api_secret)
 
 def check_connection():
+    logging.info("Checking connection to Binance API...")
     try:
         client.ping()
         logging.info("Connection to Binance API successful.")
@@ -31,7 +32,7 @@ def check_connection():
         exit(1)
 
 def get_historical_klines(symbol, interval, start_str):
-    """Получение исторических данных"""
+    logging.info(f"Fetching historical klines for {symbol} on {interval}...")
     try:
         klines = client.futures_klines(symbol=symbol, interval=interval, startTime=start_str)
         logging.info(f"Received {len(klines)} klines for {symbol} on {interval}")
@@ -41,7 +42,7 @@ def get_historical_klines(symbol, interval, start_str):
         return []
 
 def calculate_fibonacci_levels(data):
-    """Расчет уровней Фибоначчи"""
+    logging.info("Calculating Fibonacci levels...")
     max_price = max(data)
     min_price = min(data)
     diff = max_price - min_price
@@ -53,20 +54,22 @@ def calculate_fibonacci_levels(data):
         '61.8%': max_price - 0.618 * diff,
         '100.0%': min_price
     }
+    logging.info(f"Fibonacci levels calculated: {levels}")
     return levels
 
 def find_trade_signals(data, levels):
-    """Поиск точек входа на основе уровней Фибоначчи"""
+    logging.info("Finding trade signals...")
     signals = []
     for i in range(1, len(data)):
         if data[i-1] > levels['38.2%'] and data[i] <= levels['38.2%']:
             signals.append(('Buy', i, levels['38.2%']))
         elif data[i-1] < levels['61.8%'] and data[i] >= levels['61.8%']:
             signals.append(('Sell', i, levels['61.8%']))
+    logging.info(f"Signals found: {signals}")
     return signals
 
 def analyze_market():
-    """Основная функция для анализа рынка"""
+    logging.info("Starting market analysis...")
     try:
         # Получение всех фьючерсных символов
         futures_info = client.futures_exchange_info()
@@ -105,7 +108,7 @@ def analyze_market():
         logging.error(f"Error in analyze_market: {e}")
 
 def capture_chart_screenshot(symbol, interval, signal, levels, prices):
-    """Сделать скриншот графика с TradingView"""
+    logging.info(f"Capturing chart screenshot for {symbol} on {interval}...")
     options = Options()
     options.add_argument('--headless')
     options.add_argument('--disable-gpu')
@@ -149,4 +152,25 @@ def capture_chart_screenshot(symbol, interval, signal, levels, prices):
 
         # Определение ближайших уровней тейк-профита
         take_profit_1 = signal[2] + (levels['38.2%'] - levels['61.8%']) if signal[0] == 'Buy' else signal[2] - (levels['38.2%'] - levels['61.8%'])
-        take_profit_2 = signal[2] + 2 * (levels['38.2%'] - levels['61.8%']) if signal[0] == 'Buy' else signal[2] - 2 * (levels['38.2%'] - levels['61.8%
+        take_profit_2 = signal[2] + 2 * (levels['38.2%'] - levels['61.8%']) if signal[0] == 'Buy' else signal[2] - 2 * (levels['38.2%'] - levels['61.8%'])
+
+        y_tp1 = height - int((take_profit_1 - min(prices)) / (max(prices) - min(prices)) * height)
+        y_tp2 = height - int((take_profit_2 - min(prices)) / (max(prices) - min(prices)) * height)
+        
+        draw.line([(0, y_tp1), (width, y_tp1)], fill='green', width=1)
+        draw.text((0, y_tp1), f'Take Profit 1 ({take_profit_1:.2f})', fill='green', font=font)
+        
+        draw.line([(0, y_tp2), (width, y_tp2)], fill='green', width=1)
+        draw.text((0, y_tp2), f'Take Profit 2 ({take_profit_2:.2f})', fill='green', font=font)
+
+        # Сохранение изображения
+        image.save(f'screenshot_{symbol}_{interval}.png')
+        logging.info(f"Screenshot saved: screenshot_{symbol}_{interval}.png")
+    except Exception as e:
+        logging.error(f"Error capturing screenshot for {symbol} on {interval}: {e}")
+    finally:
+        driver.quit()
+
+if __name__ == '__main__':
+    check_connection()
+    analyze_market()
