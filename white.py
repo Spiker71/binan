@@ -64,28 +64,27 @@ def analyze_market():
     # Получение всех фьючерсных символов
     futures_info = client.futures_exchange_info()
     symbols = [s['symbol'] for s in futures_info['symbols'] if s['quoteAsset'] == 'USDT']
-    intervals = [Client.KLINE_INTERVAL_15MINUTE, Client.KLINE_INTERVAL_1HOUR]
-
+    interval = Client.KLINE_INTERVAL_15MINUTE
+    
     for symbol in symbols:
-        for interval in intervals:
-            start_str = int((datetime.datetime.now() - datetime.timedelta(days=30)).timestamp() * 1000)
+        start_str = int((datetime.datetime.now() - datetime.timedelta(days=1)).timestamp() * 1000)
 
-            # Получение исторических данных
-            klines = get_historical_klines(symbol, interval, start_str)
-            close_prices = np.array([float(kline[4]) for kline in klines])
+        # Получение исторических данных
+        klines = get_historical_klines(symbol, interval, start_str)
+        close_prices = np.array([float(kline[4]) for kline in klines])
 
-            # Рассчет уровней Фибоначчи
-            fibonacci_levels = calculate_fibonacci_levels(close_prices)
+        # Рассчет уровней Фибоначчи
+        fibonacci_levels = calculate_fibonacci_levels(close_prices)
 
-            # Поиск точек входа
-            signals = find_trade_signals(close_prices, fibonacci_levels)
+        # Поиск точек входа
+        signals = find_trade_signals(close_prices, fibonacci_levels)
 
-            # Логирование сигналов
-            for signal in signals:
-                logging.info(f"Signal: {signal[0]} at index {signal[1]} (price: {close_prices[signal[1]]}) for {symbol} on {interval}")
-            
-            # Делание скриншота графика
-            capture_chart_screenshot(symbol, interval, signals, fibonacci_levels, close_prices)
+        # Логирование сигналов
+        for signal in signals:
+            logging.info(f"Signal: {signal[0]} at index {signal[1]} (price: {close_prices[signal[1]]}) for {symbol} on {interval}")
+        
+        # Делание скриншота графика
+        capture_chart_screenshot(symbol, interval, signals, fibonacci_levels, close_prices)
 
 def capture_chart_screenshot(symbol, interval, signals, levels, prices):
     options = Options()
@@ -96,8 +95,8 @@ def capture_chart_screenshot(symbol, interval, signals, levels, prices):
     driver = webdriver.Chrome(service=ChromeService(), options=options)
     driver.set_window_size(1920, 1080)
     
-    # Открываем TradingView с нужным символом
-    url = f'https://www.tradingview.com/chart/?symbol=BINANCE%3A{symbol.replace("USDT", "USDTPERP")}'
+    # Открываем TradingView с нужным символом и темной темой
+    url = f'https://www.tradingview.com/chart/?symbol=BINANCE%3A{symbol.replace("USDT", "USDTPERP")}&theme=dark'
     driver.get(url)
     
     try:
@@ -131,18 +130,9 @@ def capture_chart_screenshot(symbol, interval, signals, levels, prices):
             color = 'green' if signal[0] == 'Buy' else 'red'
             draw.text((x, y), signal[0], fill=color, font=font)
             draw.rectangle([x-5, y-5, x+5, y+5], outline=color)
-        
-        # Сохраняем скриншот
-        image.save(f'{symbol}_{interval}_screenshot.png')
-    except Exception as e:
-        print(f"Ошибка при создании скриншота: {e}")
-    finally:
-        driver.quit()
 
-def main():
-    while True:
-        analyze_market()
-        time.sleep(60 * 15)  # анализировать каждые 15 минут
-
-if __name__ == '__main__':
-    main()
+        # Находим индекс наилучшей точки входа
+        best_entry_index = min(signals, key=lambda x: x[1])[1]
+        best_entry_x = best_entry_index * (width / len(prices))
+        best_entry_y = height - int((prices[best_entry_index] - min(prices)) / (max(prices) - min(prices)) * height)
+        draw.line([(best_entry_x, 
