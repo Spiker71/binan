@@ -55,19 +55,24 @@ def analyze_market():
     for symbol in symbols:
         for interval in intervals:
             url = f'https://www.tradingview.com/chart/?symbol=BINANCE%3A{symbol.replace("USDT", "USDTPERP")}'
+            logging.info(f"Opening URL: {url}")
             driver.get(url)
             time.sleep(10)  # Задержка для полной загрузки графика
 
             try:
                 # Извлечение данных о ценах с графика
+                logging.info(f"Extracting prices for {symbol} on {interval} interval")
                 close_prices = extract_prices_from_chart(driver)
                 if not close_prices:
+                    logging.warning(f"No prices extracted for {symbol} on {interval} interval")
                     continue
 
                 # Рассчет уровней Фибоначчи
+                logging.info(f"Calculating Fibonacci levels for {symbol} on {interval} interval")
                 fibonacci_levels = calculate_fibonacci_levels(close_prices)
 
                 # Поиск точек входа
+                logging.info(f"Finding trade signals for {symbol} on {interval} interval")
                 signals = find_trade_signals(close_prices, fibonacci_levels)
 
                 # Логирование сигналов
@@ -83,9 +88,15 @@ def analyze_market():
 def extract_prices_from_chart(driver):
     """Извлечение цен закрытия с графика TradingView"""
     try:
+        logging.info("Extracting prices from chart")
         # Предположим, что элемент, содержащий данные о ценах, имеет определенный CSS-селектор
         price_elements = driver.find_elements(By.CSS_SELECTOR, '.some-css-selector-for-prices')
+        if not price_elements:
+            logging.warning("No price elements found")
+            return []
+
         prices = [float(element.text.replace(',', '')) for element in price_elements]
+        logging.info(f"Extracted {len(prices)} prices")
         return prices
     except Exception as e:
         logging.error(f"Error extracting prices from chart: {e}")
