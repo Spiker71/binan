@@ -8,7 +8,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 import time
 import datetime
@@ -48,9 +48,9 @@ def find_trade_signals(data, levels):
     signals = []
     for i in range(1, len(data)):
         if data[i-1] > levels['38.2%'] and data[i] <= levels['38.2%']:
-            signals.append(('Buy', i))
+            signals.append(('Buy', i, levels['38.2%']))
         elif data[i-1] < levels['61.8%'] and data[i] >= levels['61.8%']:
-            signals.append(('Sell', i))
+            signals.append(('Sell', i, levels['61.8%']))
     return signals
 
 def analyze_market():
@@ -76,29 +76,10 @@ def analyze_market():
             for signal in signals:
                 logging.info(f"Signal: {signal[0]} at index {signal[1]} (price: {close_prices[signal[1]]}) for {symbol} on {interval}")
             
-            # Сохранение графиков с уровнями Фибоначчи и сигналами
-            save_chart(symbol, interval, close_prices, fibonacci_levels, signals)
-
             # Делание скриншота графика
-            capture_chart_screenshot(symbol, interval)
+            capture_chart_screenshot(symbol, interval, signals, fibonacci_levels)
 
-def save_chart(symbol, interval, close_prices, levels, signals):
-    """Сохранение графиков с уровнями Фибоначчи и сигналами"""
-    plt.figure(figsize=(10, 5))
-    plt.plot(close_prices, label='Close Prices')
-    for level in levels:
-        plt.axhline(y=levels[level], linestyle='--', label=f'Fibonacci {level}')
-    for signal in signals:
-        if signal[0] == 'Buy':
-            plt.plot(signal[1], close_prices[signal[1]], 'go', label='Buy Signal')
-        elif signal[0] == 'Sell':
-            plt.plot(signal[1], close_prices[signal[1]], 'ro', label='Sell Signal')
-    plt.title(f'{symbol} - {interval}')
-    plt.legend()
-    plt.savefig(f'{symbol}_{interval}.png')
-    plt.close()
-
-def capture_chart_screenshot(symbol, interval):
+def capture_chart_screenshot(symbol, interval, signals, levels):
     """Сделать скриншот графика с TradingView"""
     options = Options()
     # options.add_argument('--headless')  # Для отладки отключим headless режим
@@ -120,6 +101,18 @@ def capture_chart_screenshot(symbol, interval):
         time.sleep(5)  # Задержка для полной загрузки графика
         screenshot = chart_element.screenshot_as_png
         image = Image.open(BytesIO(screenshot))
+
+        # Рисование сигналов на скриншоте
+        draw = ImageDraw.Draw(image)
+        font = ImageFont.load_default()
+        for signal in signals:
+            x = signal[1] * (image.width // len(levels))
+            y = image.height - int(signal[2] * image.height)
+            color = 'green' if signal[0] == 'Buy' else 'red'
+            draw.text((x, y), signal[0], fill=color, font=font)
+            draw.rectangle([x-5, y-5, x+5, y+5], outline=color)
+
+        # Сохранение изображения
         image.save(f'{symbol}_{interval}_screenshot.png')
     except Exception as e:
         logging.error(f"Error capturing screenshot for {symbol} on {interval}: {e}")
