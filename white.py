@@ -24,8 +24,12 @@ client = Client(api_key, api_secret)
 
 def get_historical_klines(symbol, interval, start_str):
     """Получение исторических данных"""
-    klines = client.futures_klines(symbol=symbol, interval=interval, startTime=start_str)
-    return klines
+    try:
+        klines = client.futures_klines(symbol=symbol, interval=interval, startTime=start_str)
+        return klines
+    except Exception as e:
+        logging.error(f"Error fetching historical data for {symbol} on {interval}: {e}")
+        return []
 
 def calculate_fibonacci_levels(data):
     """Расчет уровней Фибоначчи"""
@@ -54,36 +58,47 @@ def find_trade_signals(data, levels):
 
 def analyze_market():
     """Основная функция для анализа рынка"""
-    # Получение всех фьючерсных символов
-    futures_info = client.futures_exchange_info()
-    symbols = [s['symbol'] for s in futures_info['symbols'] if s['quoteAsset'] == 'USDT']
-    intervals = [Client.KLINE_INTERVAL_15MINUTE, Client.KLINE_INTERVAL_1HOUR]
+    try:
+        # Получение всех фьючерсных символов
+        futures_info = client.futures_exchange_info()
+        symbols = [s['symbol'] for s in futures_info['symbols'] if s['quoteAsset'] == 'USDT']
+        intervals = [Client.KLINE_INTERVAL_15MINUTE, Client.KLINE_INTERVAL_1HOUR, Client.KLINE_INTERVAL_4HOUR, Client.KLINE_INTERVAL_1DAY]
 
-    for symbol in symbols:
-        for interval in intervals:
-            start_str = int((datetime.datetime.now() - datetime.timedelta(days=30)).timestamp() * 1000)
+        potential_trades = []
 
-            # Получение исторических данных
-            klines = get_historical_klines(symbol, interval, start_str)
-            close_prices = np.array([float(kline[4]) for kline in klines])
+        for symbol in symbols:
+            for interval in intervals:
+                start_str = int((datetime.datetime.now() - datetime.timedelta(days=30)).timestamp() * 1000)
 
-            # Рассчет уровней Фибоначчи
-            fibonacci_levels = calculate_fibonacci_levels(close_prices)
+                # Получение исторических данных
+                klines = get_historical_klines(symbol, interval, start_str)
+                if not klines:
+                    continue
 
-            # Поиск точек входа
-            signals = find_trade_signals(close_prices, fibonacci_levels)
+                close_prices = np.array([float(kline[4]) for kline in klines])
 
-            # Логирование сигналов
-            for signal in signals:
-                logging.info(f"Signal: {signal[0]} at index {signal[1]} (price: {close_prices[signal[1]]}) for {symbol} on {interval}")
-            
-            # Делание скриншота графика
-            capture_chart_screenshot(symbol, interval, signals, fibonacci_levels, close_prices)
+                # Рассчет уровней Фибоначчи
+                fibonacci_levels = calculate_fibonacci_levels(close_prices)
 
-def capture_chart_screenshot(symbol, interval, signals, levels, prices):
+                # Поиск точек входа
+                signals = find_trade_signals(close_prices, fibonacci_levels)
+
+                # Логирование сигналов
+                for signal in signals:
+                    if interval == Client.KLINE_INTERVAL_15MINUTE:
+                        potential_trades.append((symbol, interval, signal, fibonacci_levels, close_prices))
+                        logging.info(f"Signal: {signal[0]} at index {signal[1]} (price: {close_prices[signal[1]]}) for {symbol} on {interval}")
+
+        for trade in potential_trades:
+            symbol, interval, signal, levels, prices = trade
+            capture_chart_screenshot(symbol, interval, signal, levels, prices)
+    except Exception as e:
+        logging.error(f"Error in analyze_market: {e}")
+
+def capture_chart_screenshot(symbol, interval, signal, levels, prices):
     """Сделать скриншот графика с TradingView"""
     options = Options()
-    # options.add_argument('--headless')  # Для отладки отключим headless режим
+    options.add_argument('--headless')
     options.add_argument('--disable-gpu')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
@@ -117,13 +132,25 @@ def capture_chart_screenshot(symbol, interval, signals, levels, prices):
             draw.text((0, y), f'{level} ({price:.2f})', fill='blue', font=font)
         
         # Рисование сигналов Buy/Sell
-        for signal in signals:
-            x = signal[1] * (width / len(prices))
-            y = height - int((signal[2] - min(prices)) / (max(prices) - min(prices)) * height)
-            color = 'green' if signal[0] == 'Buy' else 'red'
-            draw.text((x, y), signal[0], fill=color, font=font)
-            draw.rectangle([x-5, y-5, x+5, y+5], outline=color)
+        x = signal[1] * (width / len(prices))
+        y = height - int((signal[2] - min(prices)) / (max(prices) - min(prices)) * height)
+        color = 'green' if signal[0] == 'Buy' else 'red'
+        draw.text((x, y), signal[0], fill=color, font=font)
+        draw.rectangle([x-5, y-5, x+5, y+5], outline=color)
+
+        # Определение ближайших уровней тейк-профита
+        take_profit_1 = signal[2] + (levels['38.2%'] - levels['61.8%']) if signal[0] == 'Buy' else signal[2] - (levels['38.2%'] - levels['61.8%'])
+        take_profit_2 = signal[2] + 2 * (levels['38.2%'] - levels['61.8%']) if signal[0] == 'Buy' else signal[2] - 2 * (levels['38.2%'] - levels['61.8%'])
+
+        y_tp1 = height - int((take_profit_1 - min(prices)) / (max(prices) - min(prices)) * height)
+        y_tp2 = height - int((take_profit_2 - min(prices)) / (max(prices) - min(prices)) * height)
         
+        draw.line([(0, y_tp1), (width, y_tp1)], fill='green' if signal[0] == 'Buy' else 'red', width=2)
+        draw.text((0, y_tp1), f'TP1 ({take_profit_1:.2f})', fill='green' if signal[0] == 'Buy' else 'red', font=font)
+        
+        draw.line([(0, y_tp2), (width, y_tp2)], fill='green' if signal[0] == 'Buy' else 'red', width=2)
+        draw.text((0, y_tp2), f'TP2 ({take_profit_2:.2f})', fill='green' if signal[0] == 'Buy' else 'red', font=font)
+
         # Сохранение изображения
         image.save(f'{symbol}_{interval}_screenshot.png')
     except Exception as e:
