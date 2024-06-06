@@ -22,10 +22,19 @@ api_secret = 'v0Onk3jFT4G5Q4vufMt3eDqT2r2cKKW4NoOQC53uLNSfjRcBHfqdmYBrHaFa3Udx'
 # Создание клиента Binance
 client = Client(api_key, api_secret)
 
+def check_connection():
+    try:
+        client.ping()
+        logging.info("Connection to Binance API successful.")
+    except Exception as e:
+        logging.error(f"Error connecting to Binance API: {e}")
+        exit(1)
+
 def get_historical_klines(symbol, interval, start_str):
     """Получение исторических данных"""
     try:
         klines = client.futures_klines(symbol=symbol, interval=interval, startTime=start_str)
+        logging.info(f"Received {len(klines)} klines for {symbol} on {interval}")
         return klines
     except Exception as e:
         logging.error(f"Error fetching historical data for {symbol} on {interval}: {e}")
@@ -140,28 +149,4 @@ def capture_chart_screenshot(symbol, interval, signal, levels, prices):
 
         # Определение ближайших уровней тейк-профита
         take_profit_1 = signal[2] + (levels['38.2%'] - levels['61.8%']) if signal[0] == 'Buy' else signal[2] - (levels['38.2%'] - levels['61.8%'])
-        take_profit_2 = signal[2] + 2 * (levels['38.2%'] - levels['61.8%']) if signal[0] == 'Buy' else signal[2] - 2 * (levels['38.2%'] - levels['61.8%'])
-
-        y_tp1 = height - int((take_profit_1 - min(prices)) / (max(prices) - min(prices)) * height)
-        y_tp2 = height - int((take_profit_2 - min(prices)) / (max(prices) - min(prices)) * height)
-        
-        draw.line([(0, y_tp1), (width, y_tp1)], fill='green' if signal[0] == 'Buy' else 'red', width=2)
-        draw.text((0, y_tp1), f'TP1 ({take_profit_1:.2f})', fill='green' if signal[0] == 'Buy' else 'red', font=font)
-        
-        draw.line([(0, y_tp2), (width, y_tp2)], fill='green' if signal[0] == 'Buy' else 'red', width=2)
-        draw.text((0, y_tp2), f'TP2 ({take_profit_2:.2f})', fill='green' if signal[0] == 'Buy' else 'red', font=font)
-
-        # Сохранение изображения
-        image.save(f'{symbol}_{interval}_screenshot.png')
-    except Exception as e:
-        logging.error(f"Error capturing screenshot for {symbol} on {interval}: {e}")
-    finally:
-        driver.quit()
-
-def main():
-    while True:
-        analyze_market()
-        time.sleep(60 * 15)  # анализировать каждые 15 минут
-
-if __name__ == '__main__':
-    main()
+        take_profit_2 = signal[2] + 2 * (levels['38.2%'] - levels['61.8%']) if signal[0] == 'Buy' else signal[2] - 2 * (levels['38.2%'] - levels['61.8%
