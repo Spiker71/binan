@@ -1,6 +1,5 @@
 import logging
 import numpy as np
-import matplotlib.pyplot as plt
 from binance.client import Client
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service as ChromeService
@@ -79,9 +78,9 @@ def analyze_market():
                 logging.info(f"Signal: {signal[0]} at index {signal[1]} (price: {close_prices[signal[1]]}) for {symbol} on {interval}")
             
             # Делание скриншота графика
-            capture_chart_screenshot(symbol, interval, signals, fibonacci_levels)
+            capture_chart_screenshot(symbol, interval, signals, fibonacci_levels, close_prices)
 
-def capture_chart_screenshot(symbol, interval, signals, levels):
+def capture_chart_screenshot(symbol, interval, signals, levels, prices):
     """Сделать скриншот графика с TradingView"""
     options = Options()
     # options.add_argument('--headless')  # Для отладки отключим headless режим
@@ -107,13 +106,24 @@ def capture_chart_screenshot(symbol, interval, signals, levels):
         # Рисование сигналов на скриншоте
         draw = ImageDraw.Draw(image)
         font = ImageFont.load_default()
+        
+        # Определение размеров изображения
+        width, height = image.size
+        
+        # Рисование уровней Фибоначчи
+        for level, price in levels.items():
+            y = height - int((price - min(prices)) / (max(prices) - min(prices)) * height)
+            draw.line([(0, y), (width, y)], fill='blue', width=2)
+            draw.text((0, y), f'{level} ({price:.2f})', fill='blue', font=font)
+        
+        # Рисование сигналов Buy/Sell
         for signal in signals:
-            x = signal[1] * (image.width // len(levels))
-            y = image.height - int(signal[2] * image.height)
+            x = signal[1] * (width / len(prices))
+            y = height - int((signal[2] - min(prices)) / (max(prices) - min(prices)) * height)
             color = 'green' if signal[0] == 'Buy' else 'red'
             draw.text((x, y), signal[0], fill=color, font=font)
             draw.rectangle([x-5, y-5, x+5, y+5], outline=color)
-
+        
         # Сохранение изображения
         image.save(f'{symbol}_{interval}_screenshot.png')
     except Exception as e:
