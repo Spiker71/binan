@@ -15,7 +15,7 @@ import datetime
 logging.basicConfig(filename='trading_signals.log', level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
 def calculate_fibonacci_levels(data):
-    """Расчет уровней Фибоначчи"""
+    logging.info("Calculating Fibonacci levels")
     max_price = max(data)
     min_price = min(data)
     diff = max_price - min_price
@@ -27,20 +27,22 @@ def calculate_fibonacci_levels(data):
         '61.8%': max_price - 0.618 * diff,
         '100.0%': min_price
     }
+    logging.info(f"Fibonacci levels: {levels}")
     return levels
 
 def find_trade_signals(data, levels):
-    """Поиск точек входа на основе уровней Фибоначчи"""
+    logging.info("Finding trade signals")
     signals = []
     for i in range(1, len(data)):
         if data[i-1] > levels['38.2%'] and data[i] <= levels['38.2%']:
             signals.append(('Buy', i, levels['38.2%']))
         elif data[i-1] < levels['61.8%'] and data[i] >= levels['61.8%']:
             signals.append(('Sell', i, levels['61.8%']))
+    logging.info(f"Signals found: {signals}")
     return signals
 
 def analyze_market():
-    """Основная функция для анализа рынка"""
+    logging.info("Starting market analysis")
     symbols = ['BTCUSDT', 'ETHUSDT']  # Добавьте сюда нужные символы
     intervals = ['15', '60', '240', 'D']  # 15 мин, 1 час, 4 часа, 1 день
 
@@ -86,11 +88,11 @@ def analyze_market():
     driver.quit()
 
 def extract_prices_from_chart(driver):
-    """Извлечение цен закрытия с графика TradingView"""
+    logging.info("Extracting prices from chart")
     try:
-        logging.info("Extracting prices from chart")
-        # Предположим, что элемент, содержащий данные о ценах, имеет определенный CSS-селектор
-        price_elements = driver.find_elements(By.CSS_SELECTOR, '.some-css-selector-for-prices')
+        # Пример CSS селектора, замените его на актуальный для вашей страницы
+        price_elements = driver.find_elements(By.CSS_SELECTOR, '.chart-container .price')
+        logging.info(f"Price elements found: {len(price_elements)}")
         if not price_elements:
             logging.warning("No price elements found")
             return []
@@ -103,7 +105,6 @@ def extract_prices_from_chart(driver):
         return []
 
 def capture_chart_screenshot(driver, symbol, interval, signal, levels, prices):
-    """Сделать скриншот графика с TradingView"""
     logging.info(f"Capturing chart screenshot for {symbol} on {interval}...")
     try:
         chart_element = WebDriverWait(driver, 20).until(
@@ -116,16 +117,16 @@ def capture_chart_screenshot(driver, symbol, interval, signal, levels, prices):
         # Рисование сигналов на скриншоте
         draw = ImageDraw.Draw(image)
         font = ImageFont.load_default()
-        
+
         # Определение размеров изображения
         width, height = image.size
-        
+
         # Рисование уровней Фибоначчи
         for level, price in levels.items():
             y = height - int((price - min(prices)) / (max(prices) - min(prices)) * height)
             draw.line([(0, y), (width, y)], fill='blue', width=2)
             draw.text((0, y), f'{level} ({price:.2f})', fill='blue', font=font)
-        
+
         # Рисование сигналов Buy/Sell
         x = signal[1] * (width / len(prices))
         y = height - int((signal[2] - min(prices)) / (max(prices) - min(prices)) * height)
@@ -139,10 +140,10 @@ def capture_chart_screenshot(driver, symbol, interval, signal, levels, prices):
 
         y_tp1 = height - int((take_profit_1 - min(prices)) / (max(prices) - min(prices)) * height)
         y_tp2 = height - int((take_profit_2 - min(prices)) / (max(prices) - min(prices)) * height)
-        
+
         draw.line([(0, y_tp1), (width, y_tp1)], fill='green', width=1)
         draw.text((0, y_tp1), f'Take Profit 1 ({take_profit_1:.2f})', fill='green', font=font)
-        
+
         draw.line([(0, y_tp2), (width, y_tp2)], fill='green', width=1)
         draw.text((0, y_tp2), f'Take Profit 2 ({take_profit_2:.2f})', fill='green', font=font)
 
