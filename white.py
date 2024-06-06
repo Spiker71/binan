@@ -1,9 +1,10 @@
 import logging
 import numpy as np
+import pandas as pd
+import pandas_ta as ta
 import matplotlib.pyplot as plt
 from binance.client import Client
 from binance.enums import *
-import talib
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
