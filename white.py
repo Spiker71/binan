@@ -114,7 +114,7 @@ def capture_and_annotate_chart(symbol, interval, close_prices, levels, signals):
     time.sleep(5)  # Даем время странице загрузиться
 
     # Найти элемент графика на странице и сделать скриншот всей страницы
-    chart_element = driver.find_element(By.CSS_SELECTOR, ".css-1rhbuit")
+    chart_element = driver.find_element(By.CSS_SELECTOR, ".css-1i6ws6j")  # Обновите селектор на основании актуальной структуры страницы
     screenshot = chart_element.screenshot_as_png
     
     # Сохранение скриншота
