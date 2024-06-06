@@ -1,18 +1,17 @@
 import logging
 import numpy as np
-import pandas as pd
-import pandas_ta as ta
 import matplotlib.pyplot as plt
 from binance.client import Client
-from binance.enums import *
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-import time
-import datetime
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from PIL import Image
 from io import BytesIO
+import time
+import datetime
 
 # Установка параметров логирования
 logging.basicConfig(filename='trading_signals.log', level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
@@ -100,26 +99,32 @@ def save_chart(symbol, interval, close_prices, levels, signals):
     plt.close()
 
 def capture_chart_screenshot(symbol, interval):
-    """Сделать скриншот графика с Binance"""
+    """Сделать скриншот графика с TradingView"""
     options = Options()
-    options.add_argument('--headless')
+    # options.add_argument('--headless')  # Для отладки отключим headless режим
     options.add_argument('--disable-gpu')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     driver = webdriver.Chrome(service=ChromeService(), options=options)
     driver.set_window_size(1920, 1080)
     
-    url = f'https://www.binance.com/en/trade/{symbol}'
+    # Открытие TradingView с графиком
+    url = f'https://www.tradingview.com/chart/?symbol=BINANCE%3A{symbol.replace("/", "")}'
     driver.get(url)
-    time.sleep(5)  # Дать время странице загрузиться
-
-    # Находим элемент графика и делаем скриншот
-    chart_element = driver.find_element(By.CSS_SELECTOR, 'body > div.js-rootresizer__contents > div.layout__area--center.no-border-bottom-left-radius.no-border-bottom-right-radius.no-border-top-right-radius > div.chart-container.top-full-width-chart.active > div.chart-container-border > div.chart-widget.chart-widget--themed-dark.chart-widget__top--themed-dark.chart-widget__bottom--themed-dark > div.chart-markup-table > div:nth-child(1) > div.chart-markup-table.pane > div > canvas:nth-child(2)')
-    screenshot = chart_element.screenshot_as_png
-    image = Image.open(BytesIO(screenshot))
-    image.save(f'{symbol}_{interval}_screenshot.png')
     
-    driver.quit()
+    try:
+        # Ждем, пока элемент станет видимым
+        chart_element = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'canvas'))
+        )
+        time.sleep(5)  # Задержка для полной загрузки графика
+        screenshot = chart_element.screenshot_as_png
+        image = Image.open(BytesIO(screenshot))
+        image.save(f'{symbol}_{interval}_screenshot.png')
+    except Exception as e:
+        logging.error(f"Error capturing screenshot for {symbol} on {interval}: {e}")
+    finally:
+        driver.quit()
 
 def main():
     while True:
