@@ -14,39 +14,6 @@ from selenium.webdriver.support import expected_conditions as EC
 # Установка параметров логирования
 logging.basicConfig(filename='trading_signals.log', level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
-# Создание клиента Binance
-# Убрал клиента Binance, так как теперь мы будем использовать только TradingView для анализа
-
-def get_historical_klines(symbol, interval, start_str):
-    """Получение исторических данных"""
-    # Вместо запроса к Binance, мы будем использовать данные TradingView
-    pass
-
-def calculate_fibonacci_levels(data):
-    """Расчет уровней Фибоначчи"""
-    max_price = max(data)
-    min_price = min(data)
-    diff = max_price - min_price
-    levels = {
-        '0.0%': max_price,
-        '23.6%': max_price - 0.236 * diff,
-        '38.2%': max_price - 0.382 * diff,
-        '50.0%': max_price - 0.5 * diff,
-        '61.8%': max_price - 0.618 * diff,
-        '100.0%': min_price
-    }
-    return levels
-
-def find_trade_signals(data, levels):
-    """Поиск точек входа на основе уровней Фибоначчи"""
-    signals = []
-    for i in range(1, len(data)):
-        if data[i-1] > levels['38.2%'] and data[i] <= levels['38.2%']:
-            signals.append(('Buy', i, levels['38.2%']))
-        elif data[i-1] < levels['61.8%'] and data[i] >= levels['61.8%']:
-            signals.append(('Sell', i, levels['61.8%']))
-    return signals
-
 # Функция для ожидания видимости элемента на странице
 def wait_for_element(driver, by, selector, timeout=10):
     try:
@@ -55,7 +22,7 @@ def wait_for_element(driver, by, selector, timeout=10):
         )
         return element
     except Exception as e:
-        print(f"Ошибка при ожидании элемента: {e}")
+        logging.error(f"Ошибка при ожидании элемента: {e}")
         return None
 
 def analyze_market():
@@ -97,9 +64,19 @@ def analyze_market():
             # Рисуем уровни Фибоначчи
             width, height = image.size
             close_prices = np.random.rand(100)  # Вместо данных Binance используем случайные данные
-            fibonacci_levels = calculate_fibonacci_levels(close_prices)
+            max_price = max(close_prices)
+            min_price = min(close_prices)
+            diff = max_price - min_price
+            fibonacci_levels = {
+                '0.0%': max_price,
+                '23.6%': max_price - 0.236 * diff,
+                '38.2%': max_price - 0.382 * diff,
+                '50.0%': max_price - 0.5 * diff,
+                '61.8%': max_price - 0.618 * diff,
+                '100.0%': min_price
+            }
             for level, price in fibonacci_levels.items():
-                y = height - int((price - min(close_prices)) / (max(close_prices) - min(close_prices)) * height)
+                y = height - int((price - min_price) / diff * height)
                 draw.line([(0, y), (width, y)], fill='blue', width=2)
                 draw.text((0, y), f'{level} ({price:.2f})', fill='blue', font=font)
     
@@ -107,11 +84,34 @@ def analyze_market():
             signals = [('Buy', 20, close_prices[20]), ('Sell', 50, close_prices[50])]  # Пример сигналов
             for signal in signals:
                 x = signal[1] * (width / len(close_prices))
-                y = height - int((signal[2] - min(close_prices)) / (max(close_prices) - min(close_prices)) * height)
+                y = height - int((signal[2] - min_price) / diff * height)
                 color = 'green' if signal[0] == 'Buy' else 'red'
                 draw.text((x, y), signal[0], fill=color, font=font)
                 draw.rectangle([x - 5, y - 5, x + 5, y + 5], outline=color)
     
             # Находим индекс наилучшей точки входа
             best_entry_index = min(signals, key=lambda x: x[1])[1]
-            best_entry_x = best_entry
+            best_entry_x = best_entry_index * (width / len(close_prices))
+            best_entry_y = height - int((signals[best_entry_index][2] - min_price) / diff * height)
+            draw.line([(best_entry_x, best_entry_y), (best_entry_x, 0)], fill='yellow', width=2)
+        
+            # Находим оптимальные уровни тейк-профитов
+            take_profit_1 = signals[best_entry_index][2] + (fibonacci_levels['38.2%'] - fibonacci_levels['61.8%']) if signals[best_entry_index][0] == 'Buy' else signals[best_entry_index][2] - (fibonacci_levels['38.2%'] - fibonacci_levels['61.8%'])
+            take_profit_2 = signals[best_entry_index][2] + 2 * (fibonacci_levels['38.2%'] - fibonacci_levels['61.8%']) if signals[best_entry_index][0] == 'Buy' else signals[best_entry_index][2] - 2 * (fibonacci_levels['38.2%'] - fibonacci_levels['61.8%'])
+        
+            # Нарисуем линии для тейк-профитов
+            take_profit_1_y = height - int((take_profit_1 - min_price) / diff * height)
+            take_profit_2_y = height - int((take_profit_2 - min_price) / diff * height)
+            draw.line([(0, take_profit_1_y), (width, take_profit_1_y)], fill='green', width=2)
+            draw.line([(0, take_profit_2_y), (width, take_profit_2_y)], fill='orange', width=2)
+        
+            # Сохраняем изображение
+            image.save(f'{symbol}_{interval}_screenshot.png')
+            
+        except Exception as e:
+            logging.error(f"Ошибка при анализе рынка для символа {symbol}: {e}")
+        finally:
+            driver.quit()
+
+if __name__ == "__main__":
+    analyze_market()
